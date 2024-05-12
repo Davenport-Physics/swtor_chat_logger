@@ -4,10 +4,20 @@ use std::net::TcpStream;
 use std::sync::Mutex;
 
 use log::info;
+use retour::static_detour;
+use retour::StaticDetour;
+use std::mem;
 
-use windows::Win32::System::LibraryLoader::GetModuleHandleExA;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleExA, GetModuleHandleA};
 use windows::core::PCSTR;
 use windows::Win32::Foundation::HMODULE;
+
+static_detour! {
+
+    static Test: fn(i32, i32) -> i32;
+
+}
+
 
 #[ctor::ctor]
 fn detour_init() {
@@ -25,19 +35,38 @@ fn detour_init() {
 
 fn begin_hook() {
 
-    let mut phmodule: HMODULE = HMODULE::default();
+    const RELATIVE_ADDRESS: isize = 0x0002af0;
+
     unsafe {
 
-        match GetModuleHandleExA(0, PCSTR(b"hook_test.exe\0".as_ptr()), &mut phmodule as *mut _) {
-            Ok(_) => {
+        match GetModuleHandleA(PCSTR(b"hook_test.exe\0".as_ptr())) {
+            Ok(hmodule) => {
                 info!("Found module");
-                info!("At maybe this ? {:?}", phmodule.0);
+                info!("Module handle: {:?}", hmodule);
+                begin_detour(hmodule.0 + RELATIVE_ADDRESS);
             },
             Err(_) => {
                 info!("Failed to find module");
             }
         }
 
+    }
+
+}
+
+fn begin_detour(address: isize) {
+
+    unsafe {
+        let target: fn(i32, i32) -> i32 = mem::transmute(address);
+        match Test.initialize(target, my_add) {
+            Ok(_) => {
+                info!("Detour initialized");
+                Test.enable().unwrap();
+            },
+            Err(_) => {
+                info!("Failed to initialize detour");
+            }
+        }
     }
 
 }

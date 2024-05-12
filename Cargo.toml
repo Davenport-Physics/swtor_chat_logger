@@ -14,7 +14,7 @@ name = "hooking_exe"
 path = "src/main.rs"
 
 [dependencies]
-retour = { version = "0.3" }
+retour = { version = "0.3", features = ["static-detour"] }
 dll-syringe = "0.15.2"
 ctor = "0.2.8"
 windows = { version = "0.56.0", features = ["Win32_System_LibraryLoader"]}
