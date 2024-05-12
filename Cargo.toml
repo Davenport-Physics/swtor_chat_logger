@@ -1,0 +1,22 @@
+[package]
+name = "hooking_code"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "hooking_dll"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "hooking_exe"
+path = "src/main.rs"
+
+[dependencies]
+retour = { version = "0.3" }
+dll-syringe = "0.15.2"
+ctor = "0.2.8"
+windows = { version = "0.56.0", features = ["Win32_System_LibraryLoader"]}
+tracing-subscriber = "0.3.18"
+log = "0.4.21"
