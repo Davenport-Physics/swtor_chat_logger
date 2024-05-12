@@ -117,6 +117,7 @@ version = "0.1.0"
 dependencies = [
  "ctor",
  "dll-syringe",
+ "lazy_static",
  "log",
  "retour",
  "tracing-subscriber",

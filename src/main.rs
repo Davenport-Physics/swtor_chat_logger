@@ -5,10 +5,24 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
 
+mod pid_finder;
+
+#[macro_use]
+extern crate lazy_static;
 
 fn main() {
 
-    let target_process = OwnedProcess::find_first_by_name("hook_test.exe").unwrap();
+    let target_pid = pid_finder::get_pid();
+
+    match target_pid {
+        Ok(_) => {},
+        Err(_) => {
+            println!("Failed to find SWTOR process");
+            return;
+        }
+    }
+
+    let target_process = OwnedProcess::from_pid(target_pid.unwrap()).unwrap();
     let syringe = Syringe::for_process(target_process);
 
     thread::spawn(|| {
@@ -27,9 +41,16 @@ fn main() {
 
     });
     
-    let injected_payload = syringe.inject("./target/debug/hooking_dll.dll").unwrap();
-    thread::sleep(Duration::from_secs(10));
+    let injected_payload = syringe.inject("./target/debug/swtor_chat_capturer.dll").unwrap();
     stdin().read_line(&mut String::new()).unwrap();
+
+    let mut stream = TcpStream::connect("127.0.0.1:4593").unwrap();
+    stream.write(b"Hello, world!").unwrap();
+
+    println!("Waiting for 5 seconds");
+    thread::sleep(Duration::from_secs(5));
+
+    println!("Disabling hook");
     syringe.eject(injected_payload).unwrap();
 
 }
