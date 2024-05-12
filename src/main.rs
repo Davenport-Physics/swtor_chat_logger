@@ -1,5 +1,6 @@
 use dll_syringe::{Syringe, process::OwnedProcess};
 use rusqlite::{params, Connection, Result};
+use serde_json::{Deserializer, Value};
 
 use std::io::{prelude::*, stdin};
 use std::net::{TcpListener, TcpStream};
@@ -42,14 +43,20 @@ fn main() {
 
         let listener = TcpListener::bind("127.0.0.1:4592").unwrap();
 
-        let mut buffer: [u8; 1024] = [0; 1024];
         let mut stream = listener.accept().unwrap().0;
         println!("Listening for bytes");
         loop {
 
-            stream.read(&mut buffer).unwrap();
-            messages.lock().unwrap().push(String::from_utf8_lossy(&buffer).to_string());
-            buffer = [0; 1024];
+            Deserializer::from_reader(&mut stream).into_iter::<Value>().for_each(|value| {
+
+                match value {
+                    Ok(value) => {
+                        messages.lock().unwrap().push(value.to_string());
+                    },
+                    Err(_) => {}
+                }
+
+            });
 
         }
 
@@ -80,7 +87,7 @@ fn init_database() {
         CREATE TABLE IF NOT EXISTS chat
         (
             id INTEGER PRIMARY KEY,
-            message TEXT NOT NULL,
+            message VARCHAR(1024) NOT NULL,
             timestamp TIMESTAMP NOT NULL DEFAULT(CURRENT_TIMESTAMP)
         );
     ";

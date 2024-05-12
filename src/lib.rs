@@ -15,6 +15,9 @@ use std::time::Duration;
 use log::info;
 use retour::static_detour;
 use retour::StaticDetour;
+
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::mem;
 
 use windows::Win32::System::LibraryLoader::{GetModuleHandleExA, GetModuleHandleA};
@@ -35,6 +38,12 @@ lazy_static! {
 
 const CHAT_RELATIVE_ADDRESS: isize = 0x0ccd360;
 
+#[derive(Serialize, Deserialize)]
+pub enum MessageType {
+    Info,
+    Chat
+}
+
 
 #[ctor::ctor]
 fn detour_init() {
@@ -48,7 +57,6 @@ fn detour_init() {
 fn start_tcp_messager() {
 
     let mut stream = TcpStream::connect("127.0.0.1:4592").unwrap();
-    stream.write(b"Hello, world!").unwrap();
 
     let messages = Arc::clone(&MESSAGES);
     thread::spawn(move || {
@@ -59,10 +67,10 @@ fn start_tcp_messager() {
                 break;
             }
 
-            for message in messages.lock().unwrap().iter() {
+            for message in messages.lock().unwrap().drain(..) {
                 stream.write(message.as_bytes()).unwrap();
             }
-            thread::sleep(Duration::from_millis(1000));
+            thread::sleep(Duration::from_millis(100));
 
         }
 
@@ -70,9 +78,12 @@ fn start_tcp_messager() {
 
 }
 
-fn submit_message(message: &str) {
+fn submit_message(message_type: MessageType, message: &str) {
 
-    MESSAGES.lock().unwrap().push(message.to_string());
+    MESSAGES.lock().unwrap().push(json!({
+        "type": message_type,
+        "message": message.to_string()
+    }).to_string());
 
 }
 
@@ -99,12 +110,12 @@ fn begin_hook() {
 
         match GetModuleHandleA(PCSTR(b"swtor.exe\0".as_ptr())) {
             Ok(hmodule) => {
-                submit_message("Found module");
-                submit_message(&format!("Module handle: {:?}", hmodule));
+                submit_message(MessageType::Info, "Found module");
+                submit_message(MessageType::Info, &format!("Module handle: {:?}", hmodule));
                 begin_detour(hmodule.0 + CHAT_RELATIVE_ADDRESS);
             },
             Err(_) => {
-                submit_message("Failed to find module");
+                submit_message(MessageType::Info, "Failed to find module");
             }
         }
 
@@ -119,11 +130,11 @@ fn begin_detour(address: isize) {
         let target: extern "C" fn(*mut u64, *const i8) = mem::transmute(address);
         match ChatHook.initialize(target, my_detour) {
             Ok(_) => {
-                submit_message("Detour initialized");
+                submit_message(MessageType::Info, "Detour initialized");
                 ChatHook.enable().unwrap();
             },
             Err(_) => {
-                submit_message("Failed to initialize detour");
+                submit_message(MessageType::Info, "Failed to initialize detour");
             }
         }
 
@@ -139,7 +150,7 @@ fn my_detour(param_1: *mut u64, some_string: *const i8) {
         let str_slice: &str = c_str.to_str().unwrap();
 
         if str_slice.to_lowercase().contains("</font>") {
-            submit_message(str_slice);
+            submit_message(MessageType::Chat, str_slice);
         }
 
         ChatHook.call(param_1, some_string);
