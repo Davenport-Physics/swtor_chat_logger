@@ -25,7 +25,7 @@ use windows::core::PCSTR;
 use windows::Win32::Foundation::HMODULE;
 
 static_detour! {
-    static ChatHook: extern "C" fn(*mut u64, *const i8);
+    static ChatHook: extern "C" fn(*mut u64, *const *const i8, *const *const i8, i32, *const *const i8) -> i64;
 }
 
 #[macro_use]
@@ -36,7 +36,7 @@ lazy_static! {
     static ref QUIT: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 }
 
-const CHAT_RELATIVE_ADDRESS: isize = 0x0ccd360;
+const CHAT_RELATIVE_ADDRESS: isize = 0x03f3380;
 
 #[derive(Serialize, Deserialize)]
 pub enum MessageType {
@@ -127,11 +127,19 @@ fn begin_detour(address: isize) {
 
     unsafe {
 
-        let target: extern "C" fn(*mut u64, *const i8) = mem::transmute(address);
+        let target: extern "C" fn(*mut u64, *const *const i8, *const *const i8, i32, *const *const i8) -> i64 = mem::transmute(address);
         match ChatHook.initialize(target, my_detour) {
+
             Ok(_) => {
-                submit_message(MessageType::Info, "Detour initialized");
-                ChatHook.enable().unwrap();
+
+                submit_message(MessageType::Info, "Detour initializing");
+
+                if let Err(err) = ChatHook.enable() {
+                    submit_message(MessageType::Info, &format!("Failed to enable detour: {:?}", err));
+                    return;
+                }
+
+                submit_message(MessageType::Info, "Detour enabled");
             },
             Err(_) => {
                 submit_message(MessageType::Info, "Failed to initialize detour");
@@ -142,18 +150,46 @@ fn begin_detour(address: isize) {
 
 }
 
-fn my_detour(param_1: *mut u64, some_string: *const i8) {
+fn my_detour(param_1: *mut u64, from_character_id: *const *const i8, to_character_id: *const *const i8, channel_id: i32, chat_message: *const *const i8) -> i64 {
 
     unsafe {
 
-        let c_str: &CStr = CStr::from_ptr(some_string);
-        let str_slice: &str = c_str.to_str().unwrap();
-
-        if str_slice.to_lowercase().contains("</font>") {
-            submit_message(MessageType::Chat, str_slice);
+        let t_from_character_id: &CStr = CStr::from_ptr(*from_character_id);
+        //submit_message(MessageType::Info, &format!("{:?}", t_from_character_id.to_string_lossy()));
+        match t_from_character_id.to_str() {
+            Ok(s) => {
+                submit_message(MessageType::Chat, &format!("Converted from_character_id: {}", s));
+            },
+            Err(err) => {
+                submit_message(MessageType::Info, &format!("Failed to convert from_character_id, {:?}", err));
+            }
         }
 
-        ChatHook.call(param_1, some_string);
+        let t_to_character_id: &CStr = CStr::from_ptr(*to_character_id);
+
+        match t_to_character_id.to_str() {
+            Ok(s) => {
+                submit_message(MessageType::Chat, &format!("Converted to_character_id: {}", s));
+            },
+            Err(err) => {
+                submit_message(MessageType::Info, &format!("Failed to convert to_character_id {:?}", err));
+            }
+        }
+
+        let t_chat_message: &CStr = CStr::from_ptr(*chat_message);
+
+        match t_chat_message.to_str() {
+            Ok(s) => {
+                submit_message(MessageType::Chat, &format!("Converted chat_message: {}", s));
+            },
+            Err(err) => {
+                submit_message(MessageType::Info, &format!("Failed to convert chat_message {:?}", err));
+            }
+        }
+
+        submit_message(MessageType::Info, &format!("channel_id: {}", channel_id));
+
+        return ChatHook.call(param_1, from_character_id, to_character_id, channel_id, chat_message);
 
     }
 
